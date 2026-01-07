@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>养生调理助手</title>
+    <!-- 引入 Tailwind CSS (样式) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 React 和 ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- 引入 Babel (让浏览器能看懂 React 代码) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        body { -webkit-tap-highlight-color: transparent; }
+        /* 隐藏滚动条但允许滚动 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-stone-50 text-gray-800 font-sans">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- 图标组件 (SVG) ---
+        const Icon = ({ path, size = 20, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {path}
+            </svg>
+        );
+
+        const Icons = {
+            Camera: (props) => <Icon {...props} path={<><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></>} />,
+            ChevronRight: (props) => <Icon {...props} path={<path d="m9 18 6-6-6-6"/>} />,
+            ChevronLeft: (props) => <Icon {...props} path={<path d="m15 18-6-6 6-6"/>} />,
+            Copy: (props) => <Icon {...props} path={<><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></>} />,
+            CheckCircle: (props) => <Icon {...props} path={<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>} />,
+            Info: (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></>} />,
+            FileText: (props) => <Icon {...props} path={<><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><polyline points="10 9 9 9 8 9"/></>} />,
+            Eye: (props) => <Icon {...props} path={<><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></>} />,
+            EyeOff: (props) => <Icon {...props} path={<><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7c.44 0 .87-.03 1.28-.09"/><line x1="2" x2="22" y1="2" y2="22"/></>} />
+        };
+
+        // --- 主程序 ---
+        const TongueDiagnosisApp = () => {
+            const [step, setStep] = useState(0); 
+            const [report, setReport] = useState({
+                tongueColor: '',
+                coatingColor: '',
+                coatingTexture: [],
+                symptoms: [],
+                note: ''
+            });
+            const [previewImage, setPreviewImage] = useState(null);
+            const [showPhotoRef, setShowPhotoRef] = useState(true); 
+            const [copied, setCopied] = useState(false);
+
+            // 数据配置
+            const tongueColors = [
+                { id: 'pale', label: '淡白', desc: '舌色较浅，多为虚寒', color: '#fca5a5' },
+                { id: 'light_red', label: '淡红', desc: '正常气色，或轻微表证', color: '#f87171' },
+                { id: 'red', label: '鲜红', desc: '颜色鲜艳，多有内热', color: '#ef4444' },
+                { id: 'dark_red', label: '暗紫/绛', desc: '深红或带紫，循环不畅', color: '#7f1d1d' },
+            ];
+
+            const coatingColors = [
+                { id: 'white', label: '白苔', desc: '常见于受寒或正常', color: '#f3f4f6' },
+                { id: 'yellow', label: '黄苔', desc: '常见于内热或积食', color: '#fcd34d' },
+                { id: 'grey_black', label: '灰黑苔', desc: '寒热错杂或较重', color: '#4b5563' },
+            ];
+
+            const coatingTextures = [
+                { id: 'thin', label: '薄苔', desc: '隐约可见舌质' },
+                { id: 'thick', label: '厚苔', desc: '看不见舌质' },
+                { id: 'greasy', label: '腻苔', desc: '油腻状，刮之不脱' },
+                { id: 'peeled', label: '少苔/剥落', desc: '地图舌或光面' },
+                { id: 'toothed', label: '齿痕', desc: '舌边有牙齿印' },
+                { id: 'spotted', label: '红点/裂纹', desc: '芒刺或纹路' },
+            ];
+
+            const symptomsList = [
+                '睡眠质量差', '便秘/排便难', '大便稀/不成形', 
+                '饭后胀满', '口干/口苦', '怕冷/手脚凉', 
+                '容易出汗', '容易疲劳', '头晕昏沉',
+                '腰酸', '生理期不适(女)', '情绪急躁'
+            ];
+
+            const handleSelect = (category, value) => {
+                setReport(prev => ({ ...prev, [category]: value }));
+                nextStep();
+            };
+
+            const handleMultiSelect = (category, value) => {
+                setReport(prev => {
+                const current = prev[category];
+                if (current.includes(value)) {
+                    return { ...prev, [category]: current.filter(item => item !== value) };
+                } else {
+                    return { ...prev, [category]: [...current, value] };
+                }
+                });
+            };
+
+            const handleImageUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setPreviewImage(reader.result);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const nextStep = () => setStep(prev => prev + 1);
+            const prevStep = () => setStep(prev => prev - 1);
+
+            const generateTextReport = () => {
+                return `【健康调理反馈单】
+👤 顾客自查记录
+----------------
+1️⃣ 舌象观察：
+- 舌色：${tongueColors.find(c => c.id === report.tongueColor)?.label || '未选'}
+- 苔色：${coatingColors.find(c => c.id === report.coatingColor)?.label || '未选'}
+- 形态：${report.coatingTexture.length > 0 ? report.coatingTexture.map(id => coatingTextures.find(t => t.id === id)?.label).join('、') : '常规'}
+
+2️⃣ 身体感受：
+${report.symptoms.length > 0 ? report.symptoms.join('、') : '无特殊不适'}
+
+3️⃣ 备注/生活习惯：
+${report.note || '无'}
+----------------
+(仅供养生调理参考)`;
+            };
+
+            const copyToClipboard = () => {
+                const text = generateTextReport();
+                // 简单的兼容处理
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                    });
+                } else {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-9999px";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                    } catch (err) {
+                        alert('复制失败，请手动长按文字复制');
+                    }
+                    document.body.removeChild(textArea);
+                }
+            };
+
+            // 组件
+            const ProgressBar = () => (
+                <div className="w-full bg-gray-200 h-2 rounded-full mb-4">
+                    <div className="bg-emerald-600 h-2 rounded-full transition-all duration-300" style={{ width: `${(step / 6) * 100}%` }}></div>
+                </div>
+            );
+
+            const PhotoReference = () => {
+                if (!previewImage) return null;
+                return (
+                    <div className="bg-white p-2 rounded-lg shadow-sm border border-emerald-100 mb-4 transition-all">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-xs font-bold text-emerald-800 flex items-center gap-1">
+                                <Icons.Camera size={12}/> 您的舌象参考
+                            </span>
+                            <button onClick={() => setShowPhotoRef(!showPhotoRef)} className="text-xs text-gray-400 flex items-center gap-1">
+                                {showPhotoRef ? <><Icons.EyeOff size={12}/> 收起</> : <><Icons.Eye size={12}/> 展开</>}
+                            </button>
+                        </div>
+                        {showPhotoRef && (
+                        <div className="w-full h-32 bg-gray-100 rounded overflow-hidden">
+                            <img src={previewImage} alt="参考图" className="w-full h-full object-cover" />
+                        </div>
+                        )}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen max-w-md mx-auto shadow-xl flex flex-col relative bg-stone-50">
+                    {/* 顶部导航 */}
+                    <div className="bg-emerald-700 text-white p-4 flex items-center justify-between sticky top-0 z-10 shadow-md">
+                        <h1 className="text-lg font-bold flex items-center gap-2">
+                        <Icons.FileText size={20} /> 养生调理助手
+                        </h1>
+                        {step > 0 && step < 6 && (
+                        <span className="text-xs bg-emerald-800 px-2 py-1 rounded">
+                            步骤 {step}/5
+                        </span>
+                        )}
+                    </div>
+
+                    <div className="flex-1 p-5 overflow-y-auto pb-24">
+                        {/* Step 0: Welcome */}
+                        {step === 0 && (
+                        <div className="flex flex-col items-center justify-center h-full space-y-6 py-8">
+                            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-2">
+                                <Icons.Camera size={40} className="text-emerald-600" />
+                            </div>
+                            <div className="text-center space-y-2">
+                                <h2 className="text-xl font-bold text-emerald-900">健康调理反馈</h2>
+                                <p className="text-gray-600 text-sm px-4 leading-relaxed">
+                                    老朋友您好！<br/>为了给您提供更准确的调理建议，请花1分钟记录当下的身体状态。
+                                </p>
+                            </div>
+                            
+                            <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg text-xs text-orange-800 w-full text-left">
+                                <h3 className="font-bold mb-2 flex items-center gap-1 text-sm"><Icons.Info size={14}/> 使用说明：</h3>
+                                <ol className="list-decimal list-inside space-y-1 text-orange-900/80">
+                                    <li>第一步：先拍一张舌头照片。</li>
+                                    <li>第二步：看着照片，勾选您的舌象特征。</li>
+                                    <li>第三步：生成反馈单发给我。</li>
+                                </ol>
+                            </div>
+
+                            <div className="w-full pt-4">
+                                <button onClick={nextStep} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl text-lg font-bold shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2">
+                                    开始记录 <Icons.ChevronRight />
+                                </button>
+                                <p className="text-center text-xs text-gray-400 mt-3">
+                                    *本工具仅用于生活方式记录与反馈，非医疗诊断依据
+                                </p>
+                            </div>
+                        </div>
+                        )}
+
+                        {/* Step 1: 拍照 */}
+                        {step === 1 && (
+                        <div className="flex flex-col items-center">
+                            <ProgressBar />
+                            <h2 className="text-xl font-bold mb-2 text-emerald-900">1. 请先拍一张照片</h2>
+                            <p className="text-gray-500 text-sm mb-6 text-center">稍后请【看着这张照片】回答问题</p>
+                            
+                            <div className="bg-white p-4 rounded-xl shadow-sm w-full mb-6 text-center border border-gray-100">
+                                <div className="w-full h-56 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center overflow-hidden relative">
+                                    {previewImage ? (
+                                    <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
+                                    ) : (
+                                    <div className="text-gray-400 flex flex-col items-center">
+                                        <Icons.Camera size={32} className="mb-2" />
+                                        <span className="text-xs">自然伸舌，光线明亮</span>
+                                    </div>
+                                    )}
+                                </div>
+                                
+                                <label className="mt-4 inline-block w-full">
+                                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                                    <div className="bg-emerald-100 text-emerald-800 py-3 rounded-lg font-bold cursor-pointer hover:bg-emerald-200 transition-colors flex items-center justify-center gap-2">
+                                    <Icons.Camera size={20} />
+                                    {previewImage ? '重新拍摄' : '拍摄/上传照片'}
+                                    </div>
+                                </label>
+                            </div>
+
+                            <button onClick={nextStep} disabled={!previewImage} className={`w-full py-4 rounded-xl font-bold shadow-lg transition-all ${previewImage ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
+                                {previewImage ? '下一步：看着照片选特征' : '请先上传照片'}
+                            </button>
+                            {!previewImage && (
+                                <button onClick={nextStep} className="mt-4 text-xs text-gray-400 underline">如果不方便拍照，跳过此步(不推荐)</button>
+                            )}
+                        </div>
+                        )}
+
+                        {/* Step 2: 舌色 */}
+                        {step === 2 && (
+                        <div>
+                            <ProgressBar />
+                            <PhotoReference />
+                            <h2 className="text-xl font-bold mb-6 text-emerald-900">2. 对照照片，您的【舌色】是？</h2>
+                            <div className="grid grid-cols-1 gap-4">
+                            {tongueColors.map((item) => (
+                                <button key={item.id} onClick={() => handleSelect('tongueColor', item.id)} className="relative overflow-hidden p-4 border-2 border-gray-100 rounded-xl hover:border-emerald-500 transition-all bg-white shadow-sm flex items-center gap-4 group">
+                                <div className="w-10 h-10 rounded-full shadow-inner border border-black/10 flex-shrink-0" style={{ backgroundColor: item.color }}></div>
+                                <div className="text-left flex-1">
+                                    <div className="font-bold text-base text-gray-800">{item.label}</div>
+                                    <div className="text-xs text-gray-500">{item.desc}</div>
+                                </div>
+                                <Icons.ChevronRight className="text-gray-300 group-hover:text-emerald-500" />
+                                </button>
+                            ))}
+                            </div>
+                            <button onClick={prevStep} className="mt-6 text-gray-400 flex items-center gap-1 mx-auto text-sm">
+                                <Icons.ChevronLeft size={14} /> 返回拍照
+                            </button>
+                        </div>
+                        )}
+
+                        {/* Step 3: 苔色 */}
+                        {step === 3 && (
+                        <div>
+                            <ProgressBar />
+                            <PhotoReference />
+                            <h2 className="text-xl font-bold mb-6 text-emerald-900">3. 舌头表面的【苔色】是？</h2>
+                            <div className="grid grid-cols-1 gap-4">
+                            {coatingColors.map((item) => (
+                                <button key={item.id} onClick={() => handleSelect('coatingColor', item.id)} className="p-4 border-2 border-gray-100 rounded-xl hover:border-emerald-500 transition-all bg-white shadow-sm flex items-center gap-4 group">
+                                <div className="w-10 h-10 rounded-full shadow-inner border border-black/10 flex-shrink-0 relative overflow-hidden bg-red-300">
+                                    <div className="absolute inset-0 opacity-80" style={{ backgroundColor: item.color, borderRadius: '50%', transform: 'scale(0.8)' }}></div>
+                                </div>
+                                <div className="text-left flex-1">
+                                    <div className="font-bold text-base text-gray-800">{item.label}</div>
+                                    <div className="text-xs text-gray-500">{item.desc}</div>
+                                </div>
+                                <Icons.ChevronRight className="text-gray-300 group-hover:text-emerald-500" />
+                                </button>
+                            ))}
+                            </div>
+                            <button onClick={prevStep} className="mt-6 text-gray-400 flex items-center gap-1 mx-auto text-sm">
+                                <Icons.ChevronLeft size={14} /> 上一步
+                            </button>
+                        </div>
+                        )}
+
+                        {/* Step 4: 苔质 */}
+                        {step === 4 && (
+                        <div>
+                            <ProgressBar />
+                            <PhotoReference />
+                            <h2 className="text-xl font-bold mb-2 text-emerald-900">4. 舌苔形态（可多选）</h2>
+                            <p className="text-gray-500 text-xs mb-4">看着照片，勾选明显的特征</p>
+                            <div className="grid grid-cols-2 gap-3">
+                            {coatingTextures.map((item) => {
+                                const isSelected = report.coatingTexture.includes(item.id);
+                                return (
+                                <button key={item.id} onClick={() => handleMultiSelect('coatingTexture', item.id)} className={`p-3 border-2 rounded-xl text-left transition-all relative ${isSelected ? 'border-emerald-600 bg-emerald-50' : 'border-gray-100 bg-white'}`}>
+                                    {isSelected && <div className="absolute top-2 right-2 text-emerald-600"><Icons.CheckCircle size={16} /></div>}
+                                    <div className={`font-bold text-sm ${isSelected ? 'text-emerald-800' : 'text-gray-700'}`}>{item.label}</div>
+                                    <div className="text-xs text-gray-400 mt-1">{item.desc}</div>
+                                </button>
+                                );
+                            })}
+                            </div>
+                            <div className="mt-8 flex gap-4">
+                                <button onClick={prevStep} className="flex-1 py-3 text-gray-500 bg-gray-100 rounded-lg text-sm">上一步</button>
+                                <button onClick={nextStep} className="flex-1 py-3 bg-emerald-600 text-white rounded-lg font-bold shadow-md">下一步</button>
+                            </div>
+                        </div>
+                        )}
+
+                        {/* Step 5: 症状 */}
+                        {step === 5 && (
+                        <div>
+                            <ProgressBar />
+                            <h2 className="text-xl font-bold mb-2 text-emerald-900">5. 最近身体感受（多选）</h2>
+                            <p className="text-gray-500 text-xs mb-6">如实勾选，帮助判断体质</p>
+                            <div className="space-y-2">
+                            {symptomsList.map((sym) => {
+                                const isSelected = report.symptoms.includes(sym);
+                                return (
+                                <button key={sym} onClick={() => handleMultiSelect('symptoms', sym)} className={`w-full p-3.5 rounded-lg flex items-center justify-between border transition-all ${isSelected ? 'bg-emerald-50 border-emerald-500 text-emerald-900' : 'bg-white border-gray-100 text-gray-700'}`}>
+                                    <span className="font-medium text-sm">{sym}</span>
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-emerald-600 border-emerald-600' : 'border-gray-300'}`}>
+                                    {isSelected && <div className="text-white"><Icons.CheckCircle size={14} /></div>}
+                                    </div>
+                                </button>
+                                )
+                            })}
+                            </div>
+                            <div className="mt-6">
+                                <label className="block text-sm font-bold text-gray-700 mb-2">其他补充（选填）：</label>
+                                <textarea className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" rows="2" placeholder="例如：最近吃得比较油腻，或者正在喝什么汤方..." value={report.note} onChange={(e) => setReport({...report, note: e.target.value})}></textarea>
+                            </div>
+                            <div className="mt-8 flex gap-4">
+                                <button onClick={prevStep} className="flex-1 py-3 text-gray-500 bg-gray-100 rounded-lg text-sm">上一步</button>
+                                <button onClick={nextStep} className="flex-1 py-3 bg-emerald-600 text-white rounded-lg font-bold shadow-md">生成反馈单</button>
+                            </div>
+                        </div>
+                        )}
+
+                        {/* Step 6: 结果 */}
+                        {step === 6 && (
+                        <div className="flex flex-col h-full">
+                            <div className="text-center mb-6">
+                                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Icons.CheckCircle size={32} />
+                                </div>
+                                <h2 className="text-2xl font-bold text-gray-800">反馈单已生成</h2>
+                                <p className="text-gray-500 text-xs">请点击复制，发给您的健康管理师</p>
+                            </div>
+                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 font-mono text-sm leading-relaxed mb-6 shadow-inner relative">
+                                <pre className="whitespace-pre-wrap text-gray-700 font-sans">{generateTextReport()}</pre>
+                                {previewImage && (
+                                <div className="mt-4 border-t border-dashed border-gray-300 pt-3 flex items-center gap-2 text-gray-400 text-xs">
+                                    <div className="w-8 h-8 bg-gray-200 rounded overflow-hidden">
+                                        <img src={previewImage} className="w-full h-full object-cover" />
+                                    </div>
+                                    <span>[包含 1 张图片] (需手动发送)</span>
+                                </div>
+                                )}
+                            </div>
+                            <div className="space-y-3 mt-auto">
+                                <button onClick={copyToClipboard} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-lg ${copied ? 'bg-gray-800 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}>
+                                    {copied ? <><Icons.CheckCircle size={20} /> 已复制！</> : <><Icons.Copy size={20} /> 一键复制报告</>}
+                                </button>
+                                <p className="text-xs text-center text-gray-400 px-4 leading-normal">
+                                    操作指引：点击“一键复制” → 返回微信聊天 → 长按粘贴 → <span className="text-emerald-600 font-bold">别忘了发送刚才拍的照片</span>
+                                </p>
+                                <button onClick={() => { setStep(0); setReport({ tongueColor: '', coatingColor: '', coatingTexture: [], symptoms: [], note: '' }); setPreviewImage(null); }} className="w-full py-3 text-gray-500 hover:text-gray-700 text-sm">
+                                    重新开始
+                                </button>
+                            </div>
+                        </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TongueDiagnosisApp />);
+    </script>
+</body>
+</html>
